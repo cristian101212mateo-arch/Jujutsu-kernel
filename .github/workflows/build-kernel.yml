@@ -15,7 +15,7 @@ jobs:
           apt-get update
           apt-get install -y bc bison build-essential flex libssl-dev libelf-dev \
             git zip python3 python-is-python3 cpio kmod rsync wget curl \
-            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+            clang lld llvm gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
       - name: Clone kernel source
         run: |
@@ -33,19 +33,14 @@ jobs:
       - name: Enable bluebinder modules
         run: |
           cd kernel
-          # BinderFS (esencial para bluebinder)
           sed -i 's/.*CONFIG_ANDROID_BINDERFS.*/CONFIG_ANDROID_BINDERFS=y/' out/.config
-          # VHCI (esencial para bluebinder)
           sed -i 's/.*CONFIG_BT_HCIUART.*/CONFIG_BT_HCIUART=y/' out/.config
           sed -i 's/.*CONFIG_BT_HCIUART_H4.*/CONFIG_BT_HCIUART_H4=y/' out/.config
-          # RFCOMM (recomendado para NetHunter)
           sed -i 's/.*CONFIG_BT_RFCOMM.*/CONFIG_BT_RFCOMM=y/' out/.config
-          # Forzar si no existen
           echo "CONFIG_ANDROID_BINDERFS=y" >> out/.config
           echo "CONFIG_BT_HCIUART=y" >> out/.config
           echo "CONFIG_BT_HCIUART_H4=y" >> out/.config
           echo "CONFIG_BT_RFCOMM=y" >> out/.config
-          # Verificar
           grep -E "CONFIG_ANDROID_BINDERFS|CONFIG_BT_HCIUART|CONFIG_BT_RFCOMM" out/.config
 
       - name: Disable -Werror globally
@@ -59,7 +54,7 @@ jobs:
           cd kernel
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+          make -j$(nproc) O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu-
 
       - name: Package
         run: |
@@ -67,7 +62,6 @@ jobs:
           mkdir -p output
           cp out/arch/arm64/boot/Image.gz-dtb output/ 2>/dev/null || true
           cp out/arch/arm64/boot/Image.gz output/ 2>/dev/null || true
-          # Copiar todos los DTB que encuentre
           find out/arch/arm64/boot/dts -name "*.dtb" -exec cp {} output/ \; 2>/dev/null || true
           cd output && zip -r ../kernel-jujutsu-bluebinder.zip .
 
