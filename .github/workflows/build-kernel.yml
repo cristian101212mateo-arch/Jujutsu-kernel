@@ -1,0 +1,79 @@
+name: Build Jujutsu Kernel for blossom with bluebinder
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:20.04
+
+    steps:
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y bc bison build-essential flex libssl-dev libelf-dev \
+            git zip python3 python-is-python3 cpio kmod rsync wget curl \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      - name: Clone kernel source
+        run: |
+          git clone --depth=1 --single-branch --branch V6 https://github.com/cristian101212mateo-arch/Jujutsu-kernel.git kernel
+          cd kernel
+          git log --oneline -1
+
+      - name: Configure kernel
+        run: |
+          cd kernel
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          make O=out ARCH=arm64 blossom_noksu_defconfig
+
+      - name: Enable bluebinder modules
+        run: |
+          cd kernel
+          # BinderFS (esencial para bluebinder)
+          sed -i 's/.*CONFIG_ANDROID_BINDERFS.*/CONFIG_ANDROID_BINDERFS=y/' out/.config
+          # VHCI (esencial para bluebinder)
+          sed -i 's/.*CONFIG_BT_HCIUART.*/CONFIG_BT_HCIUART=y/' out/.config
+          sed -i 's/.*CONFIG_BT_HCIUART_H4.*/CONFIG_BT_HCIUART_H4=y/' out/.config
+          # RFCOMM (recomendado para NetHunter)
+          sed -i 's/.*CONFIG_BT_RFCOMM.*/CONFIG_BT_RFCOMM=y/' out/.config
+          # Forzar si no existen
+          echo "CONFIG_ANDROID_BINDERFS=y" >> out/.config
+          echo "CONFIG_BT_HCIUART=y" >> out/.config
+          echo "CONFIG_BT_HCIUART_H4=y" >> out/.config
+          echo "CONFIG_BT_RFCOMM=y" >> out/.config
+          # Verificar
+          grep -E "CONFIG_ANDROID_BINDERFS|CONFIG_BT_HCIUART|CONFIG_BT_RFCOMM" out/.config
+
+      - name: Disable -Werror globally
+        run: |
+          cd kernel
+          echo 'KBUILD_CFLAGS += -Wno-error' >> Makefile
+          echo 'KBUILD_CFLAGS += -Wno-error=array-bounds -Wno-error=format -Wno-error=maybe-uninitialized -Wno-error=uninitialized -Wno-error=duplicate-decl-specifier -Wno-error=misleading-indentation -Wno-error=stringop-overflow -Wno-error=restrict -Wno-error=return-type' >> Makefile
+
+      - name: Build kernel
+        run: |
+          cd kernel
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+
+      - name: Package
+        run: |
+          cd kernel
+          mkdir -p output
+          cp out/arch/arm64/boot/Image.gz-dtb output/ 2>/dev/null || true
+          cp out/arch/arm64/boot/Image.gz output/ 2>/dev/null || true
+          # Copiar todos los DTB que encuentre
+          find out/arch/arm64/boot/dts -name "*.dtb" -exec cp {} output/ \; 2>/dev/null || true
+          cd output && zip -r ../kernel-jujutsu-bluebinder.zip .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-jujutsu-bluebinder
+          path: kernel/kernel-jujutsu-bluebinder.zip
+          retention-days: 30
