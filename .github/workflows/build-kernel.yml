@@ -30,9 +30,10 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           make O=out ARCH=arm64 blossom_noksu_defconfig
 
-      - name: Enable bluebinder modules
+      - name: Enable bluebinder modules and disable SUSFS
         run: |
           cd kernel
+          # --- Módulos para bluebinder ---
           sed -i 's/.*CONFIG_ANDROID_BINDERFS.*/CONFIG_ANDROID_BINDERFS=y/' out/.config
           sed -i 's/.*CONFIG_BT_HCIUART.*/CONFIG_BT_HCIUART=y/' out/.config
           sed -i 's/.*CONFIG_BT_HCIUART_H4.*/CONFIG_BT_HCIUART_H4=y/' out/.config
@@ -41,7 +42,14 @@ jobs:
           echo "CONFIG_BT_HCIUART=y" >> out/.config
           echo "CONFIG_BT_HCIUART_H4=y" >> out/.config
           echo "CONFIG_BT_RFCOMM=y" >> out/.config
-          grep -E "CONFIG_ANDROID_BINDERFS|CONFIG_BT_HCIUART|CONFIG_BT_RFCOMM" out/.config
+
+          # --- Desactivar SUSFS y KSU para evitar errores de enlazado ---
+          sed -i 's/^CONFIG_KSU_SUSFS=y/# CONFIG_KSU_SUSFS is not set/' out/.config
+          sed -i 's/^CONFIG_KSU=y/# CONFIG_KSU is not set/' out/.config
+          sed -i 's/^CONFIG_KSU_SUSFS_.*=y/# & is not set/' out/.config
+
+          # Verificar
+          grep -E "CONFIG_ANDROID_BINDERFS|CONFIG_BT_HCIUART|CONFIG_BT_RFCOMM|CONFIG_KSU_SUSFS|CONFIG_KSU" out/.config
 
       - name: Disable -Werror globally
         run: |
@@ -54,7 +62,8 @@ jobs:
           cd kernel
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          make -j$(nproc) O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu-
+          # Usar Clang con el enlazador de LLVM (ld.lld)
+          make -j$(nproc) O=out ARCH=arm64 CC=clang LD=ld.lld CROSS_COMPILE=aarch64-linux-gnu-
 
       - name: Package
         run: |
